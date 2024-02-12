@@ -11,6 +11,7 @@ public:
 
     void ready();
     int accept();
+    int fd() const;
 private:
     void setReuseAddr();
     void setReusePort();

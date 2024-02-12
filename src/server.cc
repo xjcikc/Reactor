@@ -1,23 +1,33 @@
 #include "Acceptor.h"
 #include "TcpConnection.h"
+#include "EventLoop.h"
 #include <iostream>
-#include <unistd.h>
 
 using std::cout;
 using std::endl;
+
+void onConnection(const TcpConnectionPtr &connection) {
+    cout << connection->toString() << " has connected!" << endl;
+}
+
+void onMessage(const TcpConnectionPtr &connection) {
+    string msg = connection->receive();
+    cout << "receive from client: " << msg << endl;
+
+    connection->mysend(msg);
+}
+
+void onClose(const TcpConnectionPtr &connection) {
+    cout << connection->toString() << " has closed!" << endl;
+}
 
 void server() {
     Acceptor acceptor("127.0.0.1", 8888);
     acceptor.ready();
 
-    TcpConnection connection(acceptor.accept());
-
-    cout << connection.toString() << "has connected" << endl;
-
-    while(1) {
-        cout << ">>recv msg from client: " <<connection.receive() << endl;
-        connection.mysend("hello\n");
-    }
+    EventLoop loop(acceptor);
+    loop.setAllCallbacks(onConnection, onMessage, onClose);
+    loop.loop();
 }
 
 int main()

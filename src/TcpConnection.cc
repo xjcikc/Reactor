@@ -1,10 +1,17 @@
 #include "TcpConnection.h"
 #include <sstream>
+#include <iostream>
+
+using std::endl;
+using std::cout;
 
 TcpConnection::TcpConnection(int fd)
 : _socketIO(fd), _sock(fd), _localAddr(getLocalAddr()), _peerAddr(getPeerAddr()) {}
 
-TcpConnection::~TcpConnection() {}
+TcpConnection::~TcpConnection() {
+    // debug
+    cout << "~TcpConnection()" << endl;
+}
 
 void TcpConnection::mysend(const string &msg) {
     _socketIO.writen(msg.c_str(), msg.size());
@@ -25,6 +32,45 @@ string TcpConnection::toString() {
         << _peerAddr.port();
     
     return oss.str();
+}
+
+void TcpConnection::setConnectionCallback(const TcpConnectionCallback &cb) {
+    _onConnection = cb;
+}
+
+void TcpConnection::setMessageCallback(const TcpConnectionCallback &cb) {
+    _onMessage = cb;
+}
+
+void TcpConnection::setCloseCallback(const TcpConnectionCallback &cb) {
+    _onClose = cb;
+}
+
+void TcpConnection::handleConnectionCallback() {
+    if(_onConnection) {
+        _onConnection(shared_from_this());
+    }
+}
+
+void TcpConnection::handleMessageCallback() {
+    if(_onMessage) {
+        _onMessage(shared_from_this());
+    }
+}
+
+void TcpConnection::handleCloseCallback() {
+    if(_onClose) {
+        _onClose(shared_from_this());
+    }
+}
+
+bool TcpConnection::isClosed() const {
+    int ret = 0;
+    do {
+        char buff[64] = {0};
+        ret = recv(_sock.fd(), buff, sizeof(buff), MSG_PEEK);
+    } while(ret == -1 && errno == EINTR);
+    return ret == 0;
 }
 
 Inetaddress TcpConnection::getLocalAddr() {

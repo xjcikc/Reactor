@@ -52,3 +52,7 @@ int Acceptor::accept() {
     }
     return connfd;
 }
+
+int Acceptor::fd() const {
+    return _sock.fd();
+}
