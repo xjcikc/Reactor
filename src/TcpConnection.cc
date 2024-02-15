@@ -1,12 +1,17 @@
 #include "TcpConnection.h"
+#include "EventLoop.h"
 #include <sstream>
 #include <iostream>
 
 using std::endl;
 using std::cout;
 
-TcpConnection::TcpConnection(int fd)
-: _socketIO(fd), _sock(fd), _localAddr(getLocalAddr()), _peerAddr(getPeerAddr()) {}
+TcpConnection::TcpConnection(int fd, EventLoop* loop)
+: _socketIO(fd)
+, _sock(fd)
+, _loop(loop)
+, _localAddr(getLocalAddr())
+, _peerAddr(getPeerAddr()) {}
 
 TcpConnection::~TcpConnection() {
     // debug
@@ -15,6 +20,12 @@ TcpConnection::~TcpConnection() {
 
 void TcpConnection::mysend(const string &msg) {
     _socketIO.writen(msg.c_str(), msg.size());
+}
+
+void TcpConnection::sendInLoop(const string &msg) {
+    if(_loop) {
+        _loop->runInLoop(std::bind(&TcpConnection::mysend, this, msg));
+    }
 }
 
 string TcpConnection::receive() {

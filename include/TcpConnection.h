@@ -12,6 +12,7 @@ using std::string;
 using std::function;
 using std::shared_ptr;
 
+class EventLoop;
 class TcpConnection;
 using TcpConnectionPtr = shared_ptr<TcpConnection>;
 using TcpConnectionCallback = function<void(const TcpConnectionPtr&)>;
@@ -20,10 +21,11 @@ class TcpConnection
 : public std::enable_shared_from_this<TcpConnection>
 , Noncopyable {
 public:
-    explicit TcpConnection(int fd);
+    explicit TcpConnection(int fd, EventLoop* loop);
     ~TcpConnection();
 
     void mysend(const string &msg);
+    void sendInLoop(const string &msg);
     string receive();
     //debug
     string toString();
@@ -42,11 +44,12 @@ private:
     Inetaddress getPeerAddr();
 private:
     SocketIO _socketIO;
+    Socket _sock;
+    EventLoop* _loop;
     bool _shutdownWrite;
     TcpConnectionCallback _onConnection;
     TcpConnectionCallback _onMessage;
     TcpConnectionCallback _onClose;
-    Socket _sock;
     //debug
     Inetaddress _localAddr;
     Inetaddress _peerAddr;

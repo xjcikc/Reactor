@@ -1,16 +1,27 @@
 #include "EventLoop.h"
 #include "Acceptor.h"
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
+#include <iostream>
+
+using std::endl;
+using std::cout;
 
 #define EPOLL_EVENT_SIZE 1024
 
 EventLoop::EventLoop(Acceptor &acceptor)
-: _epfd(createEpollFd()), _acceptor(acceptor), _isLooping(true), _evtList(EPOLL_EVENT_SIZE) {
+: _epfd(createEpollFd())
+, _eventfd(createEventfd())
+, _acceptor(acceptor)
+, _isLooping(true)
+, _evtList(EPOLL_EVENT_SIZE) {
     epollAddReadFd(_acceptor.fd());
+    epollAddReadFd(_eventfd);
 }
 
 EventLoop::~EventLoop() {
     close(_epfd);
+    close(_eventfd);
 }
 
 void EventLoop::loop() {
@@ -21,6 +32,14 @@ void EventLoop::loop() {
 
 void EventLoop::unloop() {
     _isLooping = false;
+}
+
+void EventLoop::runInLoop(Functor &&cb) {
+    {
+        MutexLockGuard autolock(_mutex);
+        _pendingFunctors.push_back(std::move(cb));
+    }
+    wakeupEventfd();
 }
 
 void EventLoop::waitEpollFd() {
@@ -45,6 +64,10 @@ void EventLoop::waitEpollFd() {
             if(fd == _acceptor.fd()) {
                 handleNewConnection();
             } 
+            else if(fd == _eventfd) {
+                handleReadEventfd();
+                doPendingFunctors();
+            }
             else {
                 handleMessage(fd);
             }
@@ -61,7 +84,7 @@ void EventLoop::setAllCallbacks(TcpConnectionCallback &&cb1, TcpConnectionCallba
 void EventLoop::handleNewConnection() {
     int peerfd = _acceptor.accept();
     epollAddReadFd(peerfd);
-    TcpConnectionPtr connection(new TcpConnection(peerfd));
+    TcpConnectionPtr connection(new TcpConnection(peerfd, this));
     connection->setConnectionCallback(_onConnection);
     connection->setMessageCallback(_onMessage);
     connection->setCloseCallback(_onClose);
@@ -115,5 +138,41 @@ void EventLoop::epollDelReadFd(int fd) {
     int ret = ::epoll_ctl(_epfd, EPOLL_CTL_DEL, fd, &ev);
     if(ret < 0) {
         perror("epoll_ctl_del");
+    }
+}
+
+int EventLoop::createEventfd() {
+    int fd = eventfd(0, 0);
+    if(fd < 0) {
+        perror("eventfd");
+    }
+    return fd;
+}
+
+void EventLoop::wakeupEventfd() {
+    uint64_t one = 1;
+    int ret = write(_eventfd, &one, sizeof(one));
+    if(ret != sizeof(one)) {
+        perror("write");
+    }
+}
+
+void EventLoop::handleReadEventfd() {
+    uint64_t howmany = 0;
+    int ret = read(_eventfd, &howmany, sizeof(howmany));
+    if(ret != sizeof(howmany)) {
+        perror("read");
+    }
+}
+
+void EventLoop::doPendingFunctors() {
+    cout << "doPendingFunctors(): " << pthread_self() << endl;
+    vector<Functor> tmp;
+    {
+        MutexLockGuard autolock(_mutex);
+        tmp.swap(_pendingFunctors);
+    }
+    for(auto &cb : tmp) {
+        cb();
     }
 }
